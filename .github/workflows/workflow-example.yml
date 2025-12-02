@@ -10,7 +10,7 @@ on:
 jobs:
   test-runner:
     name: Test on ECS Runner
-    runs-on: [self-hosted, Linux, X64, cs]
+    runs-on: [self-hosted, Linux, X64, ecs]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
