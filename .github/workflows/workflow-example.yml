@@ -64,9 +64,6 @@ jobs:
           if [ -f "/kaniko/executor" ]; then
             KANIKO_EXEC="/kaniko/executor"
             echo "✓ Kaniko found at /kaniko/executor"
-          elif command -v executor >/dev/null 2>&1; then
-            KANIKO_EXEC="executor"
-            echo "✓ Kaniko found in PATH as 'executor'"
           else
             echo "ERROR: Kaniko executor not found"
             echo "Checking locations..."
@@ -78,15 +75,23 @@ jobs:
             exit 1
           fi
 
+          # Create custom kaniko directory in workspace (user owns it)
+          KANIKO_WORK_DIR="${WORKSPACE_DIR}/.kaniko-work"
+          mkdir -p ${KANIKO_WORK_DIR}
+          echo "Using kaniko work directory: ${KANIKO_WORK_DIR}"
+
           # Use cache directory in workspace
           CACHE_DIR="${WORKSPACE_DIR}/.kaniko-cache"
           mkdir -p ${CACHE_DIR}
 
+          # Build with Kaniko using custom kaniko-dir and force flag
           ${KANIKO_EXEC} \
             --context ${WORKSPACE_DIR} \
             --dockerfile ${WORKSPACE_DIR}/Dockerfile \
+            --kaniko-dir ${KANIKO_WORK_DIR} \
             --tar-path ${TAR_PATH} \
             --cache-dir ${CACHE_DIR} \
+            --force \
             --no-push
           echo "IMAGE_NAME=${IMAGE_NAME}" >> $GITHUB_ENV
           echo "TAR_PATH=${TAR_PATH}" >> $GITHUB_ENV
@@ -110,9 +115,11 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
+          WORKSPACE_DIR="$(pwd)"
           rm -f ${TAR_PATH} || true
           rm -rf ${WORKSPACE_DIR}/.kaniko-cache || true
-          echo "✓ Cleanup complete - image tar and kaniko cache deleted"
+          rm -rf ${WORKSPACE_DIR}/.kaniko-work || true
+          echo "✓ Cleanup complete - image tar, kaniko cache and work dir deleted"
 
   simple-build:
     name: Simple Build Test
