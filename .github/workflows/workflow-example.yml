@@ -10,7 +10,7 @@ on:
 jobs:
   test-runner:
     name: Test on ECS Runner
-    runs-on: [self-hosted, cs]
+    runs-on: [self-hosted, Linux, X64, cs]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -39,7 +39,7 @@ jobs:
 
   build-docker-image:
     name: Build Docker Image
-    runs-on: [self-hosted, ecs]
+    runs-on: [self-hosted, Linux, X64, cs]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -69,7 +69,7 @@ jobs:
 
   simple-build:
     name: Simple Build Test
-    runs-on: [self-hosted, ecs]
+    runs-on: [self-hosted, Linux, X64, cs]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
