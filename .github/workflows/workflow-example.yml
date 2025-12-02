@@ -48,18 +48,30 @@ jobs:
         run: |
           IMAGE_NAME="test-hello-world:${{ github.sha }}"
           TAR_PATH="/tmp/${IMAGE_NAME//:/_}.tar"
-          
+          KANIKO_DIR="/tmp/kaniko"
+
+          # Verify Dockerfile exists
+          echo "=== Verifying Dockerfile location ==="
+          echo "Current directory: $(pwd)"
+          echo "Dockerfile path: $(pwd)/Dockerfile"
+          ls -la Dockerfile || (echo "ERROR: Dockerfile not found!" && exit 1)
+          echo "✓ Dockerfile found"
+
+          # Create writable kaniko directory
+          mkdir -p ${KANIKO_DIR}
+
+          echo ""
           echo "=== Building image with Kaniko ==="
           /kaniko/executor \
             --context . \
-            --dockerfile Dockerfile \
-            --destination ${IMAGE_NAME} \
-            --tarPath ${TAR_PATH} \
+            --dockerfile ./Dockerfile \
+            --kaniko-dir ${KANIKO_DIR} \
+            --tar-path ${TAR_PATH} \
             --no-push
-          
+
           echo "IMAGE_NAME=${IMAGE_NAME}" >> $GITHUB_ENV
           echo "TAR_PATH=${TAR_PATH}" >> $GITHUB_ENV
-          
+
           echo "✓ Image built successfully!"
           echo "Image saved to: ${TAR_PATH}"
 
@@ -74,12 +86,16 @@ jobs:
           echo ""
           echo "=== Dockerfile Content ==="
           cat Dockerfile
+          echo ""
+          echo "=== Kaniko Build Complete ==="
+          echo "Note: Image is saved as tar file. To use it, load with: docker load < ${TAR_PATH}"
 
       - name: Cleanup
         if: always()
         run: |
           rm -f ${TAR_PATH} || true
-          echo "✓ Cleanup complete - image tar deleted"
+          rm -rf /tmp/kaniko || true
+          echo "✓ Cleanup complete - image tar and kaniko cache deleted"
 
   simple-build:
     name: Simple Build Test
