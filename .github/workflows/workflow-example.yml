@@ -116,7 +116,7 @@ jobs:
 
   simple-build:
     name: Simple Build Test
-    runs-on: [Linux, X64, cs]
+    runs-on: [Linux, X64, ecs]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
