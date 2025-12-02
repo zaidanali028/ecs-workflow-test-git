@@ -8,34 +8,34 @@ on:
     branches: [main]
 
 jobs:
-  # test-runner:
-  #   name: Test on ECS Runner.
-  #   runs-on: [self-hosted, Linux, X64, ecs]
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
+  test-runner:
+    name: Test on ECS Runner.
+    runs-on: [self-hosted, Linux, X64, ecs]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-  #     - name: Print runner info
-  #       run: |
-  #         echo "Runner: ${{ runner.name }}"
-  #         echo "OS: ${{ runner.os }}"
-  #         echo "Architecture: ${{ runner.arch }}"
-  #         echo "Working directory: ${{ runner.workspace }}"
+      - name: Print runner info
+        run: |
+          echo "Runner: ${{ runner.name }}"
+          echo "OS: ${{ runner.os }}"
+          echo "Architecture: ${{ runner.arch }}"
+          echo "Working directory: ${{ runner.workspace }}"
 
-  #     - name: Test Node.js
-  #       run: |
-  #         node --version
-  #         npm --version
+      - name: Test Node.js
+        run: |
+          node --version
+          npm --version
 
-  #     - name: Test Python
-  #       run: |
-  #         python3 --version
-  #         pip3 --version
+      - name: Test Python
+        run: |
+          python3 --version
+          pip3 --version
 
-  #     - name: Test Java
-  #       run: |
-  #         java -version
-  #         mvn --version
+      - name: Test Java
+        run: |
+          java -version
+          mvn --version
 
   build-docker-image:
     name: Build Docker Image
@@ -46,11 +46,10 @@ jobs:
 
       - name: Build Docker image with Kaniko
         run: |
-          IMAGE_NAME="test-hello-world:${{ github.sha }}"
           WORKSPACE_DIR="$(pwd)"
-          TAR_PATH="${WORKSPACE_DIR}/${IMAGE_NAME//:/_}.tar"
-          # Use home directory for kaniko - user has full ownership
-          KANIKO_DIR="${HOME}/.kaniko"
+          IMAGE_NAME="test-hello-world"
+          IMAGE_TAG="${{ github.sha }}"
+          OCI_LAYOUT_DIR="${WORKSPACE_DIR}/.oci-layout"
 
           # Verify Dockerfile exists
           echo "=== Verifying Dockerfile location ==="
@@ -61,61 +60,86 @@ jobs:
 
           echo ""
           echo "=== Building image with Kaniko ==="
-          # Use default /kaniko directory (now writable in runner image)
-          # Use --cache-dir for cache location
+
+          # Use cache directory in workspace
           CACHE_DIR="${WORKSPACE_DIR}/.kaniko-cache"
           mkdir -p ${CACHE_DIR}
+          mkdir -p ${OCI_LAYOUT_DIR}
 
+          # Build to OCI layout format (no push, no tar)
           /kaniko/executor \
             --context ${WORKSPACE_DIR} \
             --dockerfile ${WORKSPACE_DIR}/Dockerfile \
-            --tar-path ${TAR_PATH} \
+            --oci-layout-path ${OCI_LAYOUT_DIR} \
             --cache-dir ${CACHE_DIR} \
             --no-push
 
           echo "IMAGE_NAME=${IMAGE_NAME}" >> $GITHUB_ENV
-          echo "TAR_PATH=${TAR_PATH}" >> $GITHUB_ENV
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+          echo "OCI_LAYOUT_DIR=${OCI_LAYOUT_DIR}" >> $GITHUB_ENV
 
           echo "✓ Image built successfully!"
-          echo "Image saved to: ${TAR_PATH}"
 
-  #     - name: Print image info
-  #       run: |
-  #         echo "=== Image Build Information ==="
-  #         echo "Image Name: ${IMAGE_NAME}"
-  #         echo "Tar Path: ${TAR_PATH}"
-  #         echo ""
-  #         echo "=== Image File Size ==="
-  #         ls -lh ${TAR_PATH} || echo "Tar file not found"
-  #         echo ""
-  #         echo "=== Dockerfile Content ==="
-  #         cat Dockerfile
-  #         echo ""
-  #         echo "=== Kaniko Build Complete ==="
-  #         echo "Note: Image is saved as tar file. To use it, load with: docker load < ${TAR_PATH}"
+      - name: Show image information
+        run: |
+          echo "=== Docker Images (Built) ==="
+          echo ""
 
-  #     - name: Cleanup
-  #       if: always()
-  #       run: |
-  #         rm -f ${TAR_PATH} || true
-  #         rm -rf ${WORKSPACE_DIR}/.kaniko-cache || true
-  #         echo "✓ Cleanup complete - image tar and kaniko cache deleted"
+          # Get image information from OCI layout
+          if [ -f "${OCI_LAYOUT_DIR}/index.json" ]; then
+            # Extract image digest (first 12 chars like docker)
+            FULL_DIGEST=$(jq -r '.manifests[0].digest' ${OCI_LAYOUT_DIR}/index.json 2>/dev/null)
+            IMAGE_ID=$(echo ${FULL_DIGEST} | cut -d':' -f2 | cut -c1-12)
+            
+            # Get image size
+            IMAGE_SIZE=$(du -sh ${OCI_LAYOUT_DIR} 2>/dev/null | awk '{print $1}')
+            
+            # Get creation time
+            CREATED_TIME=$(date -u +"%Y-%m-%d %H:%M:%S")
+            
+            # Display in docker images format
+            printf "REPOSITORY          TAG                 IMAGE ID       CREATED              SIZE\n"
+            printf "%-20s %-20s %-15s %-20s %s\n" "${IMAGE_NAME}" "${IMAGE_TAG}" "${IMAGE_ID:-N/A}" "${CREATED_TIME}" "${IMAGE_SIZE:-N/A}"
+            printf "%-20s %-20s %-15s %-20s %s\n" "${IMAGE_NAME}" "latest" "${IMAGE_ID:-N/A}" "${CREATED_TIME}" "${IMAGE_SIZE:-N/A}"
+          else
+            echo "Error: Could not find OCI layout index.json"
+            ls -la ${OCI_LAYOUT_DIR} || true
+            exit 1
+          fi
 
-  # simple-build:
-  #   name: Simple Build Test
-  #   runs-on: [ Linux, X64, cs]
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
+          echo ""
+          echo "=== Image Details ==="
+          echo "Repository: ${IMAGE_NAME}"
+          echo "Tag: ${IMAGE_TAG}"
+          echo "Image ID: ${IMAGE_ID}"
+          echo "Size: ${IMAGE_SIZE}"
+          echo "Location: ${OCI_LAYOUT_DIR}"
+          echo ""
+          echo "Note: Image is built in OCI layout format (not pushed to registry)"
 
-  #     - name: Install dependencies
-  #       run: |
-  #         echo "Installing dependencies..."
+      - name: Cleanup
+        if: always()
+        run: |
+          WORKSPACE_DIR="$(pwd)"
+          rm -rf ${WORKSPACE_DIR}/.kaniko-cache || true
+          rm -rf ${WORKSPACE_DIR}/.oci-layout || true
+          echo "✓ Cleanup complete - kaniko cache and OCI layout deleted"
 
-  #     - name: Run tests
-  #       run: |
-  #         echo "Running tests..."
+  simple-build:
+    name: Simple Build Test
+    runs-on: [Linux, X64, cs]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-  #     - name: Build artifact
-  #       run: |
-  #         echo "Building artifact..."
+      - name: Install dependencies
+        run: |
+          echo "Installing dependencies..."
+
+      - name: Run tests
+        run: |
+          echo "Running tests..."
+
+      - name: Build artifact
+        run: |
+          echo "Building artifact..."
