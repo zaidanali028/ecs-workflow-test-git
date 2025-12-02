@@ -76,13 +76,18 @@ jobs:
           fi
 
           # Create custom kaniko directory in workspace (user owns it)
-          KANIKO_WORK_DIR="${WORKSPACE_DIR}/.kaniko-work"
+          # Use absolute path to avoid any path resolution issues
+          KANIKO_WORK_DIR="$(realpath ${WORKSPACE_DIR}/.kaniko-work)"
           mkdir -p ${KANIKO_WORK_DIR}
           echo "Using kaniko work directory: ${KANIKO_WORK_DIR}"
+          echo "Directory owner: $(stat -c '%U:%G' ${KANIKO_WORK_DIR})"
 
           # Use cache directory in workspace
           CACHE_DIR="${WORKSPACE_DIR}/.kaniko-cache"
           mkdir -p ${CACHE_DIR}
+
+          # Set KANIKO_DIR environment variable (Kaniko respects this)
+          export KANIKO_DIR=${KANIKO_WORK_DIR}
 
           # Build with Kaniko using custom kaniko-dir and force flag
           ${KANIKO_EXEC} \
