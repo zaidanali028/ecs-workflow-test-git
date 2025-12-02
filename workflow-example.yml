@@ -1,0 +1,87 @@
+name: Test ECS Runner
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-runner:
+    name: Test on ECS Runner
+    runs-on: [self-hosted, ecs]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Print runner info
+        run: |
+          echo "Runner: ${{ runner.name }}"
+          echo "OS: ${{ runner.os }}"
+          echo "Architecture: ${{ runner.arch }}"
+          echo "Working directory: ${{ runner.workspace }}"
+
+      - name: Test Node.js
+        run: |
+          node --version
+          npm --version
+
+      - name: Test Python
+        run: |
+          python3 --version
+          pip3 --version
+
+      - name: Test Java
+        run: |
+          java -version
+          mvn --version
+
+  build-docker-image:
+    name: Build Docker Image
+    runs-on: [self-hosted, ecs]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          IMAGE_NAME="test-hello-world:${{ github.sha }}"
+          docker build -t ${IMAGE_NAME} .
+          echo "IMAGE_NAME=${IMAGE_NAME}" >> $GITHUB_ENV
+
+      - name: Print image info
+        run: |
+          echo "=== Docker Image Information ==="
+          docker images ${IMAGE_NAME}
+          echo ""
+          echo "=== Image Details ==="
+          docker inspect ${IMAGE_NAME} | grep -E "(Id|RepoTags|Size|Created)" | head -10
+          echo ""
+          echo "=== Testing Image ==="
+          docker run --rm ${IMAGE_NAME}
+
+      - name: Delete Docker image
+        if: always()
+        run: |
+          docker rmi ${IMAGE_NAME} || true
+          echo "Image ${IMAGE_NAME} deleted"
+
+  simple-build:
+    name: Simple Build Test
+    runs-on: [self-hosted, ecs]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          echo "Installing dependencies..."
+
+      - name: Run tests
+        run: |
+          echo "Running tests..."
+
+      - name: Build artifact
+        run: |
+          echo "Building artifact..."
