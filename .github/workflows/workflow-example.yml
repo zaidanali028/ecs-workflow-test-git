@@ -59,10 +59,25 @@ jobs:
           echo "✓ Dockerfile found"
           echo ""
           echo "=== Building image with Kaniko ==="
-          # Use default /kaniko directory (now writable in runner image)
-          # Use --cache-dir for cache location
+
+          # Verify Kaniko is installed
+          if [ ! -f "/kaniko/executor" ]; then
+            echo "ERROR: Kaniko executor not found at /kaniko/executor"
+            echo "Checking alternative locations..."
+            which executor || echo "Kaniko not in PATH"
+            ls -la /kaniko/ 2>/dev/null || echo "/kaniko directory not found"
+            echo ""
+            echo "The runner image needs to be rebuilt with Kaniko installed."
+            echo "Run: cd ecs-runner-deployment && ./scripts/build-and-push.sh"
+            exit 1
+          fi
+
+          echo "✓ Kaniko found at /kaniko/executor"
+
+          # Use cache directory in workspace
           CACHE_DIR="${WORKSPACE_DIR}/.kaniko-cache"
           mkdir -p ${CACHE_DIR}
+
           /kaniko/executor \
             --context ${WORKSPACE_DIR} \
             --dockerfile ${WORKSPACE_DIR}/Dockerfile \
@@ -97,7 +112,7 @@ jobs:
 
   simple-build:
     name: Simple Build Test
-    runs-on: [ Linux, X64, cs]
+    runs-on: [Linux, X64, cs]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
