@@ -47,24 +47,28 @@ jobs:
       - name: Build Docker image with Kaniko
         run: |
           IMAGE_NAME="test-hello-world:${{ github.sha }}"
-          TAR_PATH="./${IMAGE_NAME//:/_}.tar"
-          KANIKO_DIR="./.kaniko"
+          WORKSPACE_DIR="$(pwd)"
+          TAR_PATH="${WORKSPACE_DIR}/${IMAGE_NAME//:/_}.tar"
+          # Use home directory for kaniko - user has full ownership
+          KANIKO_DIR="${HOME}/.kaniko"
 
           # Verify Dockerfile exists
           echo "=== Verifying Dockerfile location ==="
-          echo "Current directory: $(pwd)"
-          echo "Dockerfile path: $(pwd)/Dockerfile"
+          echo "Current directory: ${WORKSPACE_DIR}"
+          echo "Dockerfile path: ${WORKSPACE_DIR}/Dockerfile"
           ls -la Dockerfile || (echo "ERROR: Dockerfile not found!" && exit 1)
           echo "✓ Dockerfile found"
 
-          # Create writable kaniko directory in workspace (user-owned)
+          # Create kaniko directory in user's home (user owns it)
           mkdir -p ${KANIKO_DIR}
+          echo "Kaniko directory: ${KANIKO_DIR}"
+          echo "Directory owner: $(stat -c '%U:%G' ${KANIKO_DIR})"
 
           echo ""
           echo "=== Building image with Kaniko ==="
           /kaniko/executor \
-            --context . \
-            --dockerfile ./Dockerfile \
+            --context ${WORKSPACE_DIR} \
+            --dockerfile ${WORKSPACE_DIR}/Dockerfile \
             --kaniko-dir ${KANIKO_DIR} \
             --tar-path ${TAR_PATH} \
             --no-push
@@ -94,7 +98,7 @@ jobs:
         if: always()
         run: |
           rm -f ${TAR_PATH} || true
-          rm -rf ./.kaniko || true
+          rm -rf ${HOME}/.kaniko || true
           echo "✓ Cleanup complete - image tar and kaniko cache deleted"
 
   simple-build:
