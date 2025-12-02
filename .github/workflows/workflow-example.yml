@@ -64,9 +64,6 @@ jobs:
           if [ -f "/kaniko/executor" ]; then
             KANIKO_EXEC="/kaniko/executor"
             echo "✓ Kaniko found at /kaniko/executor"
-          elif command -v executor >/dev/null 2>&1; then
-            KANIKO_EXEC="executor"
-            echo "✓ Kaniko found in PATH as 'executor'"
           else
             echo "ERROR: Kaniko executor not found"
             echo "Checking locations..."
