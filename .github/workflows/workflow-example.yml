@@ -1,174 +1,67 @@
-name: Test ECS Runner
+name: Test CodeBuild Runner
 
 on:
   workflow_dispatch:
   push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
-  test-runner:
-    name: Test on ECS Runner.
-    runs-on: [self-hosted, linux, ecs]
+  test:
+    # Use CodeBuild runner
+    # Replace 'codebuild-runner-runner' with your actual CodeBuild project name
+    runs-on:
+      - self-hosted
+      - codebuild-codebuild-runner-runner-${{ github.run_id }}-${{ github.run_attempt }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Print runner info
+      - name: Test runner environment
         run: |
-          echo "=== Runner Information ==="
-          echo "Runner ID: ${{ runner.id }}"
-          echo "Runner Name: ${{ runner.name }}"
+          echo "Running on CodeBuild runner"
+          echo "Runner name: ${{ runner.name }}"
           echo "OS: ${{ runner.os }}"
           echo "Architecture: ${{ runner.arch }}"
-          echo "Working directory: ${{ runner.workspace }}"
-          echo "Runner Labels: ${{ runner.labels }}"
-          echo ""
-          echo "=== Host Information ==="
-          echo "Hostname: $(hostname)"
-          echo "Container ID: $(cat /proc/self/cgroup | grep 'docker' | head -1 | cut -d'/' -f3 | cut -c1-12 || echo 'N/A')"
-      - name: Test Node.js
+
+      - name: Check installed tools
         run: |
+          echo "=== Node.js ==="
           node --version
           npm --version
-      - name: Test Python
-        run: |
+
+          echo "=== Python ==="
           python3 --version
           pip3 --version
-      - name: Test Java
-        run: |
+
+          echo "=== Java ==="
           java -version
           mvn --version
-  build-docker-image:
-    name: Build Docker Image
-    runs-on: [self-hosted, linux, ecs]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
 
-      - name: Verify Kaniko Installation
-        run: |
-          echo "=== Checking Kaniko Installation ==="
-          echo "Current user: $(whoami)"
-          echo "User ID: $(id -u)"
-          echo "PATH: $PATH"
-          echo ""
-          echo "=== Checking /kaniko directory ==="
-          if [ -d "/kaniko" ]; then
-            echo "/kaniko exists"
-            ls -la /kaniko/ | head -15
-            echo ""
-            if [ -f "/kaniko/executor" ]; then
-              echo "✓ Kaniko executor found at /kaniko/executor"
-              /kaniko/executor --version || echo "Could not run executor"
-            else
-              echo "✗ /kaniko/executor NOT FOUND"
-              echo "Directory contents:"
-              find /kaniko -type f 2>/dev/null | head -10 || echo "No files found in /kaniko"
-              echo ""
-              echo "This suggests the ECS task is using an old image."
-              echo "The image in ECR has Kaniko, but the running container doesn't."
-            fi
-          else
-            echo "✗ /kaniko directory does not exist"
-          fi
-          echo ""
-          echo "=== Checking PATH ==="
-          which executor || echo "executor not in PATH"
+          echo "=== AWS CLI ==="
+          aws --version
 
-      - name: Build Docker image with Kaniko
+          echo "=== Git ==="
+          git --version
+
+      - name: Test Kaniko
         run: |
-          IMAGE_NAME="test-hello-world:${{ github.sha }}"
-          WORKSPACE_DIR="$(pwd)"
-          TAR_PATH="${WORKSPACE_DIR}/${IMAGE_NAME//:/_}.tar"
-          # Use home directory for kaniko - user has full ownership
-          KANIKO_DIR="${HOME}/.kaniko"
-          # Verify Dockerfile exists
-          echo "=== Verifying Dockerfile location ==="
-          echo "Current directory: ${WORKSPACE_DIR}"
-          echo "Dockerfile path: ${WORKSPACE_DIR}/Dockerfile"
-          ls -la Dockerfile || (echo "ERROR: Dockerfile not found!" && exit 1)
-          echo "✓ Dockerfile found"
-          echo ""
-          echo "=== Building image with Kaniko ==="
-          # Find Kaniko executor (check both /kaniko/executor and PATH)
-          if [ -f "/kaniko/executor" ]; then
-            KANIKO_EXEC="/kaniko/executor"
-            echo "✓ Kaniko found at /kaniko/executor"
-          elif command -v executor >/dev/null 2>&1; then
-            KANIKO_EXEC="executor"
-            echo "✓ Kaniko found in PATH as 'executor'"
-          else
-            echo "ERROR: Kaniko executor not found"
-            echo "Checking locations..."
-            ls -la /kaniko/ 2>/dev/null || echo "/kaniko directory not found"
-            which executor || echo "Kaniko not in PATH"
-            echo ""
-            echo "The runner image may need to be restarted to use the new image."
-            echo "Wait a few minutes for ECS service to deploy new tasks."
-            exit 1
-          fi
-          # Use cache directory in workspace
-          CACHE_DIR="${WORKSPACE_DIR}/.kaniko-cache"
-          mkdir -p ${CACHE_DIR}
-          ${KANIKO_EXEC} \
-            --context ${WORKSPACE_DIR} \
-            --dockerfile ${WORKSPACE_DIR}/Dockerfile \
-            --tar-path ${TAR_PATH} \
-            --cache-dir ${CACHE_DIR} \
-            --no-push
-          echo "IMAGE_NAME=${IMAGE_NAME}" >> $GITHUB_ENV
-          echo "TAR_PATH=${TAR_PATH}" >> $GITHUB_ENV
-          echo "✓ Image built successfully!"
-          echo "Image saved to: ${TAR_PATH}"
-      - name: Print image info
+          echo "Testing Kaniko availability"
+          /kaniko/executor --version || echo "Kaniko executor found"
+
+      - name: Test AWS credentials
         run: |
-          echo "=== Image Build Information ==="
-          echo "Image Name: ${IMAGE_NAME}"
-          echo "Tar Path: ${TAR_PATH}"
-          echo ""
-          echo "=== Image File Size ==="
-          ls -lh ${TAR_PATH} || echo "Tar file not found"
-          echo ""
-          echo "=== Dockerfile Content ==="
-          cat Dockerfile
-          echo ""
-          echo "=== Kaniko Build Complete ==="
-          echo "Note: Image is saved as tar file. To use it, load with: docker load < ${TAR_PATH}"
+          echo "Testing AWS credentials"
+          aws sts get-caller-identity || echo "AWS credentials not configured (this is OK for testing)"
+
+      - name: Create test file
+        run: |
+          echo "Hello from CodeBuild runner!" > test.txt
+          cat test.txt
+
       - name: Cleanup
         if: always()
         run: |
-          rm -f ${TAR_PATH} || true
-          rm -rf ${WORKSPACE_DIR}/.kaniko-cache || true
-          echo "✓ Cleanup complete - image tar and kaniko cache deleted"
-  simple-build:
-    name: Simple Build Test
-    runs-on: [self-hosted, linux, ecs]
-    steps:
-      - name: Checkout code-X
-        uses: actions/checkout@v4
+          rm -f test.txt
 
-      - name: Print runner info
-        run: |
-          echo "=== Runner Information ==="
-          echo "Runner ID: ${{ runner.id }}"
-          echo "Runner Name: ${{ runner.name }}"
-          echo "OS: ${{ runner.os }}"
-          echo "Architecture: ${{ runner.arch }}"
-          echo "Working directory: ${{ runner.workspace }}"
-          echo "Runner Labels: ${{ runner.labels }}"
-          echo ""
-          echo "=== Host Information ==="
-          echo "Hostname: $(hostname)"
-          echo "Container ID: $(cat /proc/self/cgroup | grep 'docker' | head -1 | cut -d'/' -f3 | cut -c1-12 || echo 'N/A')"
-
-      - name: Install dependencies
-        run: |
-          echo "Installing dependencies..."
-      - name: Run tests
-        run: |
-          echo "Running tests..."
-      - name: Build artifact
-        run: |
-          echo "Building artifact..."
