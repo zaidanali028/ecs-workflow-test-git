@@ -45,26 +45,16 @@ jobs:
           echo "=== Git ==="
           git --version
 
-      - name: Check Docker availability
+      - name: Start Docker daemon
         run: |
-          echo "=== Docker Status ==="
-          docker --version || echo "ERROR: Docker CLI not found"
-          echo ""
-          echo "=== Docker Socket ==="
-          ls -la /var/run/docker.sock 2>&1 || echo "WARNING: Docker socket not found at /var/run/docker.sock"
-          echo ""
-          echo "=== Docker Daemon Status ==="
-          if docker info >/dev/null 2>&1; then
-            echo "✓ Docker daemon is running"
-            docker info | head -n 10
-          else
-            echo "✗ Docker daemon is NOT accessible"
-            echo "This might indicate:"
-            echo "  1. Privileged mode is not enabled in CodeBuild"
-            echo "  2. Docker daemon is not started"
-            echo "  3. Docker socket permissions issue"
-            exit 1
-          fi
+          echo "Starting Docker daemon..."
+          # Start Docker daemon in background (CodeBuild with privileged mode)
+          nohup dockerd --host=unix:///var/run/docker.sock --host=tcp://127.0.0.1:2375 --storage-driver=overlay2 > /tmp/dockerd.log 2>&1 &
+          # Wait for Docker daemon to be ready
+          echo "Waiting for Docker daemon to start..."
+          timeout 30 sh -c "until docker info >/dev/null 2>&1; do echo 'Waiting...'; sleep 1; done" || (echo "Docker daemon failed to start" && cat /tmp/dockerd.log && exit 1)
+          echo "✓ Docker daemon is running"
+          docker info | head -n 5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
